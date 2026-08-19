@@ -1,0 +1,15 @@
+[project]
+name = "gm-genn-criss"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "networkx>=3.6.1",
+    "pydantic>=2.13.4",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
