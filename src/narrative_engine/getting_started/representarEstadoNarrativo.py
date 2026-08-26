@@ -1,7 +1,11 @@
 import operator
+import networkx as nx
 from pydantic import BaseModel
 from operation import Operation
 from comparison import Comparison
+from narrativeGraph import NarrativeGraph
+
+LIMIT_DEPHT = 3
 
 class Character(BaseModel):
     name: str
@@ -27,9 +31,40 @@ class Effect(BaseModel):
 
 class Action(BaseModel):
 	name: str
-	target: str
 	preconditions: list[Condition]
 	effects: list[Effect]
+
+def expand_state(
+	graph: NarrativeGraph,
+	state_id: int,
+	actions: list[Action]
+):
+	state = graph.get_state(state_id)
+
+	available_actions = get_available_action(
+		state,
+		actions
+	)
+
+	new_state_ids = []
+
+	for action in available_actions:
+		new_state = apply_action(
+			state,
+			action
+		)
+
+		target_id = graph.add_state(new_state)
+
+		graph.add_transition(
+			state_id,
+			target_id,
+			action
+		)
+
+		new_state_ids.append(target_id)
+
+	return new_state_ids
 
 def validate_get_action(
 	actions: [Action],
@@ -136,8 +171,6 @@ def apply_action(
 			"La acción no cumple sus precondiciones"
 		)
 
-	character = new_state.characters[action.target]
-
 	for effect in action.effects:
 
 		set_value(
@@ -166,8 +199,41 @@ def get_available_action(
 
 	return action_list
 
+def narrative_dfs(
+	state_id: int,
+	graph: NarrativeGraph,
+	actions: list[Action],
+	visited: set[int],
+	current_depth: int
+):
+	if current_depth == LIMIT_DEPHT:
+		return
+
+	if state_id in visited:
+		return
+
+	visited.add(state_id)
+
+	leaves = expand_state(
+		graph,
+		state_id,
+		actions
+	)
+
+	for leave in leaves:
+		narrative_dfs(
+			leave,
+			graph,
+			actions,
+			visited,
+			current_depth+1
+		)
+
+	visited.remove(state_id)
+
 def navigate(
 	state: NarrativeState,
+	graph: NarrativeGraph,
 	actions: list[Action]
 ):
 	current_state = state
@@ -176,12 +242,26 @@ def navigate(
 	success:bool
 	selected_action: Action
 
-	print("Welcome to GM-GENN-CRISS 0.2")
+	print("Welcome to GM-GENN-CRISS 0.3")
 	print("\nThe story do you live next, start like this.")
 	print(current_state)
 
 	while user_input != "Close system":
-		action_list = get_available_action(current_state, actions)
+		initial_id = graph.add_state(current_state)
+
+		narrative_dfs(
+			initial_id,
+			graph,
+			actions,
+			set(),
+			0
+		)
+
+		action_list = get_available_action(
+			current_state,
+			actions
+		)
+
 		for action in action_list:
 			print("\n" + action.name)
 
@@ -195,23 +275,43 @@ def navigate(
 				current_state = apply_action(current_state, selected_action)
 				print("\n And the story continue like this")
 				print(current_state)
-				print("\n You can do the next actions")
+				print("\n\nBehind Narrative")
+				print("\nNodes")
+				for node, data in graph.graph.nodes(data=True):
+					print(
+					"S" + str(node),
+					"-->",
+					data["state"]
+				)
+
+				print("\nTransitions")
+
+				for source, target, data in graph.graph.edges(data=True):
+					print(
+						"S" + str(source),
+						"--",
+						data["action"].name,
+						"-->",
+						"S" + str(target)
+    				)
+
+				print("\n\nYou can do the next actions")
 
 			else:
 				print("\nThe action selected doesn't exist in the actions list mentioned.")
 				print("\nWould you write one of the next options?")
 
-	print("\nThank you for use GM-GENN_CRISS 0.1, have a nice day")
+	print("\nThank you for use GM-GENN_CRISS 0.3, have a nice day")
 
 # -------------------------
 # Estado inicial
 # -------------------------
 
-ana = Character(name="Ana")
+saul = Character(name="saul")
 
 state = NarrativeState(
     characters={
-        "ana": ana
+        "saul": saul
     },
     tension=20
 )
@@ -221,14 +321,12 @@ state = NarrativeState(
 # Acción
 # -------------------------
 
-kill_ana = Action(
-	name="kill Ana",
-
-	target="ana",
+kill_saul = Action(
+	name="kill Saul",
 
 	preconditions=[
 		Condition(
-			path="characters.ana.alive",
+			path="characters.saul.alive",
 			operator=Comparison.EQUAL,
 			value=True
 		)
@@ -236,7 +334,7 @@ kill_ana = Action(
 
 	effects=[
 		Effect(
-			path="characters.ana.alive",
+			path="characters.saul.alive",
 			operation= Operation.SET,
 			value=False
 		),
@@ -252,11 +350,9 @@ kill_ana = Action(
 raise_tension = Action(
 	name="raise tension",
 
-	target="ana",
-
 	preconditions=[
 		Condition(
-			path="characters.ana.alive",
+			path="characters.saul.alive",
 			operator=Comparison.EQUAL,
 			value=False
 		)
@@ -273,8 +369,6 @@ raise_tension = Action(
 
 cry_for = Action(
 	name="cry for",
-
-	target="ana",
 
 	preconditions=[
 		Condition(
@@ -293,11 +387,59 @@ cry_for = Action(
 	]
 )
 
+graph = NarrativeGraph()
+
 # -------------------------
 # Transición
 # -------------------------
+initial_id = graph.add_state(state)
+
+#new_states = expand_state(
+#	graph,
+#	state,
+#	[
+#		kill_saul,
+#		raise_tension,
+#		cry_for
+#	]
+#)
+
+#state1 = graph.get_state(1)
+
+#new_states = expand_state(
+#    graph,
+#    state1,
+#    [
+#        kill_saul,
+#        raise_tension,
+#        cry_for
+#    ]
+#)
+
+#state2 = graph.get_state(2)
+
+#print("\nNODOS")
+
+#for node, data in graph.graph.nodes(data=True):
+#	print(
+#		"S" + str(node),
+#		"-->",
+#		data["state"]
+#	)
+
+#print("\nTRANSICIONES")
+
+#for source, target, data in graph.graph.edges(data=True):
+#	print(
+#		"S" + str(source),
+#		"--",
+#		data["action"].name,
+#		"-->",
+#		"S" + str(target)
+#   )
 
 navigate(
 	state,
-	[kill_ana, raise_tension, cry_for]
+	graph,
+	[kill_saul, raise_tension, cry_for]
 )
