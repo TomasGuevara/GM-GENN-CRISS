@@ -1,37 +1,48 @@
+from __future__ import annotations
 import operator
 import networkx as nx
-from pydantic import BaseModel
-from operation import Operation
-from comparison import Comparison
-from narrativeGraph import NarrativeGraph
+from pydantic import BaseModel, Field
+from narrative_engine.getting_started.operation import Operation
+from narrative_engine.getting_started.comparison import Comparison
+from narrative_engine.getting_started.narrativeGraph import NarrativeGraph
+from narrative_engine.llm.llama import Llama
+from narrative_engine.llm.narrativeGenerator import NarrativeGenerator
 
 LIMIT_DEPHT = 3
+GM_GENN_CRISS_VERSION = "0.4"
+llama = Llama("llama3.1:8b")
+generator = NarrativeGenerator(llama)
 
 class Character(BaseModel):
-    name: str
-    alive: bool = True
-
+	name: str
+	alive: bool = True
+	flags: dict[str, bool | str | float] = Field(default_factory=dict)
 
 class NarrativeState(BaseModel):
-    characters: dict[str, Character]
-    tension: float
-
+	characters: dict[str, Character]
+	tension: float
+	location: str
+	flags: dict[str, bool | str | float] = Field(default_factory=dict)
 
 class Condition(BaseModel):
-    path: str
-    operator: Comparison
-    value: float | bool
-
+	path: str
+	operator: Comparison
+	value: float | bool
 
 class Effect(BaseModel):
 	path: str
 	operation: Operation
-	value: float | bool
+	value: float | bool | str
 
+class ConditionOr(BaseModel):
+	conditions: list[Condition|ConditionAnd]
+
+class ConditionAnd(BaseModel):
+	conditions: list[Condition|ConditionOr]
 
 class Action(BaseModel):
 	name: str
-	preconditions: list[Condition]
+	preconditions: Condition|ConditionAnd|ConditionOr
 	effects: list[Effect]
 
 def expand_state(
@@ -78,10 +89,10 @@ def validate_get_action(
 	return False, None
 
 def calculate(
-	current_value: float | bool,
+	current_value: float | bool | str,
 	self,
-	effect_value: float | bool
-) -> float | bool:
+	effect_value: float | bool | str
+) -> float | bool | str:
 
 	if self == Operation.SET:
 		return effect_value
@@ -103,9 +114,18 @@ def get_value(
 
 	current = state
 
-	for part in parts:
+	for i, part in enumerate(parts):
 		if isinstance(current, dict):
-			current = current[part]
+			if part in current:
+				current = current[part]
+
+			else:
+				if i >= 1 and parts[i-1] == "flags":
+					return False
+
+				raise ValueError(
+					f"No existe el atributo '{part}' en el path '{path}'"
+				)
 
 		else:
 			current = getattr(current, part)
@@ -116,7 +136,7 @@ def set_value(
 	state: NarrativeState,
 	path: str,
 	operation: Operation,
-	value: float | bool
+	value: float | bool | str
 ):
 	parts = path.split(".")
 
@@ -141,22 +161,39 @@ def set_value(
 
 def check_preconditions(
     state: NarrativeState,
-    action: Action
+    preconditions: Condition|ConditionAnd|ConditionOr
 ) -> bool:
+	if (isinstance(preconditions, Condition)):
 
-    for condition in action.preconditions:
+		current_value = get_value(
+			state,
+			preconditions.path
+		)
 
-        current_value = get_value(
-            state,
-            condition.path
-        )
+		comparator = operator.methodcaller(preconditions.operator, preconditions.value)
 
-        comparator = operator.methodcaller(condition.operator, condition.value)
+		if not comparator(current_value):
+			return False
 
-        if not comparator(current_value):
-            return False
+	elif isinstance(preconditions, ConditionOr):
+		return any(
+			check_preconditions(
+				state,
+				conditional
+			)
+			for conditional in preconditions.conditions
+		)
 
-    return True
+	elif isinstance(preconditions, ConditionAnd):
+		return all(
+			check_preconditions(
+				state,
+				conditional
+			)
+			for conditional in preconditions.conditions
+		)
+
+	return True
 
 
 def apply_action(
@@ -166,7 +203,7 @@ def apply_action(
 
 	new_state = state.model_copy(deep=True)
 
-	if not check_preconditions(new_state, action):
+	if not check_preconditions(new_state, action.preconditions):
 		raise ValueError(
 			"La acción no cumple sus precondiciones"
 		)
@@ -190,7 +227,7 @@ def get_available_action(
 
 	for action in actions:
 		try:
-			success = check_preconditions(current_state, action)
+			success = check_preconditions(current_state, action.preconditions)
 		except ValueError as error:
 			success = False
 
@@ -238,13 +275,17 @@ def navigate(
 ):
 	current_state = state
 	user_input = ""
-	action_list: List[Action]
+	action_list: list[Action]
 	success:bool
+	story:str
 	selected_action: Action
 
-	print("Welcome to GM-GENN-CRISS 0.3")
+	print("Welcome to GM-GENN-CRISS " + GM_GENN_CRISS_VERSION)
 	print("\nThe story do you live next, start like this.")
-	print(current_state)
+	story = generator.generate(
+		current_state
+	)
+	print("\n"+story)
 
 	while user_input != "Close system":
 		initial_id = graph.add_state(current_state)
@@ -272,9 +313,17 @@ def navigate(
 			success, selected_action = validate_get_action(action_list, user_input)
 			
 			if success:
-				current_state = apply_action(current_state, selected_action)
+				state = current_state
+				current_state = apply_action(state, selected_action)
 				print("\n And the story continue like this")
-				print(current_state)
+				
+				story = generator.generate(
+    				state,
+				    current_state,
+    				selected_action
+				)
+				print("\n"+story)
+
 				print("\n\nBehind Narrative")
 				print("\nNodes")
 				for node, data in graph.graph.nodes(data=True):
@@ -301,7 +350,7 @@ def navigate(
 				print("\nThe action selected doesn't exist in the actions list mentioned.")
 				print("\nWould you write one of the next options?")
 
-	print("\nThank you for use GM-GENN_CRISS 0.3, have a nice day")
+	print("\nThank you for use GM-GENN-CRISS " + GM_GENN_CRISS_VERSION + ", have a nice day")
 
 # -------------------------
 # Estado inicial
@@ -309,11 +358,18 @@ def navigate(
 
 saul = Character(name="saul")
 
+amanda = Character(name="amanda")
+
+bruce = Character(name="bruce")
+
 state = NarrativeState(
     characters={
-        "saul": saul
+        "saul": saul,
+        "amanda": amanda,
+        "bruce": bruce
     },
-    tension=20
+    tension=20,
+    location="Junín"
 )
 
 
@@ -324,13 +380,11 @@ state = NarrativeState(
 kill_saul = Action(
 	name="kill Saul",
 
-	preconditions=[
-		Condition(
-			path="characters.saul.alive",
-			operator=Comparison.EQUAL,
-			value=True
-		)
-	],
+	preconditions=Condition(
+		path="characters.saul.alive",
+		operator=Comparison.EQUAL,
+		value=True
+	),
 
 	effects=[
 		Effect(
@@ -347,16 +401,48 @@ kill_saul = Action(
 	]
 )
 
+kill_bruce = Action(
+	name="kill Bruce",
+
+	preconditions=Condition(
+		path="characters.bruce.alive",
+		operator=Comparison.EQUAL,
+		value=True
+	),
+
+	effects=[
+		Effect(
+			path="characters.bruce.alive",
+			operation= Operation.SET,
+			value=False
+		),
+
+		Effect(
+			path="tension",
+			operation=Operation.INCREMENT,
+			value=20
+		)
+	]
+)
+
 raise_tension = Action(
 	name="raise tension",
 
-	preconditions=[
-		Condition(
-			path="characters.saul.alive",
-			operator=Comparison.EQUAL,
-			value=False
-		)
-	],
+	preconditions=ConditionOr(
+		conditions=[
+			Condition(
+				path="characters.saul.alive",
+				operator=Comparison.EQUAL,
+				value=False
+			),
+
+			Condition(
+				path="characters.bruce.alive",
+				operator=Comparison.EQUAL,
+				value=False
+			)
+		]
+	),
 
 	effects=[
 		Effect(
@@ -367,16 +453,60 @@ raise_tension = Action(
 	]
 )
 
+run_away_amanda = Action(
+	name="run away with Amanda",
+
+	preconditions=ConditionAnd(
+		conditions=[
+			Condition(
+				path="characters.saul.alive",
+				operator=Comparison.EQUAL,
+				value=False
+			),
+
+			Condition(
+				path="characters.bruce.alive",
+				operator=Comparison.EQUAL,
+				value=False
+			),
+
+			Condition(
+				path="characters.amanda.flags.escaped",
+				operator=Comparison.EQUAL,
+				value=False
+			)
+		]
+	),
+
+	effects=[
+		Effect(
+			path="tension",
+			operation=Operation.DECREMENT,
+			value=30
+		),
+
+		Effect(
+			path="characters.amanda.flags.escaped",
+			operation=Operation.SET,
+			value=True
+		),
+
+		Effect(
+			path="flags.place",
+			operation=Operation.SET,
+			value="Plaza Sarmiento"
+		),
+	]
+)
+
 cry_for = Action(
 	name="cry for",
 
-	preconditions=[
-		Condition(
-			path="tension",
-			operator=Comparison.GREATER_EQUAL,
-			value=50
-		)
-	],
+	preconditions=Condition(
+		path="tension",
+		operator=Comparison.GREATER_EQUAL,
+		value=50
+	),
 
 	effects=[
 		Effect(
@@ -394,52 +524,8 @@ graph = NarrativeGraph()
 # -------------------------
 initial_id = graph.add_state(state)
 
-#new_states = expand_state(
-#	graph,
-#	state,
-#	[
-#		kill_saul,
-#		raise_tension,
-#		cry_for
-#	]
-#)
-
-#state1 = graph.get_state(1)
-
-#new_states = expand_state(
-#    graph,
-#    state1,
-#    [
-#        kill_saul,
-#        raise_tension,
-#        cry_for
-#    ]
-#)
-
-#state2 = graph.get_state(2)
-
-#print("\nNODOS")
-
-#for node, data in graph.graph.nodes(data=True):
-#	print(
-#		"S" + str(node),
-#		"-->",
-#		data["state"]
-#	)
-
-#print("\nTRANSICIONES")
-
-#for source, target, data in graph.graph.edges(data=True):
-#	print(
-#		"S" + str(source),
-#		"--",
-#		data["action"].name,
-#		"-->",
-#		"S" + str(target)
-#   )
-
 navigate(
 	state,
 	graph,
-	[kill_saul, raise_tension, cry_for]
+	[kill_saul, kill_bruce, raise_tension, cry_for, run_away_amanda]
 )

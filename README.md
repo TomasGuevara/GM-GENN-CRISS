@@ -2,8 +2,9 @@
 ---
 ## Sistema de generación narrativa interactiva controlado por restricciones semánticas mediante grafos de estados narrativos.
 
-## Para poder hacer arrancar el motor de estudio es necesario escribir lo siguiente en la terminal
+El Sistema necesita que instales Llama en tu computadora y revises en la clase representarEstadoNarrativo
+en la linea donde se escribe la version de tu llm llama = Llama("llama3.1:8b").
+Para poder hacer arrancar el motor de estudio es necesario escribir lo siguiente en la terminal
 ```
-cd src/narrative_engine/getting_started
+uv run python -m src.narrative_engine.getting_started.representarEstadoNarrativo
 ```
-uv run python representarEstadoNarrativo.py
