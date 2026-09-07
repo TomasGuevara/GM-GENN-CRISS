@@ -60,16 +60,16 @@ class NarrativeGenerator:
 		for character in previous_state.characters.values():
 			characterNStep = current_state.characters.get(character.name)
 			if character.alive == characterNStep.alive :
-				if character.alive:
+				if characterNStep.alive:
 					status = "remained alive"
 				else:
 					status = "remained dead"
 
 			elif character.alive and not characterNStep.alive:
-				status = "now is dead"
+				status = "changed from dead to alive"
 
 			else:
-				status = "changed from dead to alive"
+				status = "now is dead"
 
 			description.append(
 				f"- {character.name}: {status}"
@@ -97,9 +97,11 @@ class NarrativeGenerator:
 				)
 
 		if previous_state.tension < current_state.tension:
-			description.append(f"Tension increased from {previous_state.tension} to {current_state.tension}")
+			description.append(f"Tension decreased, dropping from {previous_state.tension} to a lower value of {current_state.tension}")
+
 		elif previous_state.tension > current_state.tension:
-			description.append(f"Tension decreased from {previous_state.tension} to {current_state.tension}")
+			description.append(f"Tension increased, rising from {previous_state.tension} to a level above {current_state.tension}")
+
 		elif previous_state.tension == current_state.tension:
 			description.append(f"Tension remained in {current_state.tension}")
 
@@ -141,28 +143,31 @@ class NarrativeGenerator:
 	def generate(
 		self,
 		current_state: NarrativeState,
+		rules: str = "",
 		previous_state: NarrativeState = None,
 		action: Action = None
 	) -> str:
 		prompt:str
-		if previous_state is None and action_name is None:
+		if previous_state is None and action is None:
 			stateDescribed = self.describe_state(
 				current_state
 			)
 			prompt = f"""
 You are the narrator of an interactive story.
 
-The narrative state:
+NARRATIVE RULES:
+{rules}
 
+NARRATIVE STATE:
 {stateDescribed}
 
-Write a short introduction of the story based ONLY on the
-narrative state.
+Write a short introduction of the story MUST be consistent with every fact above.
 
-Do not invent changes to the narrrative state.
-Do not change character status, flags, location or tension.
+Do not explain the rules.
+Do not mention the narrative state.
+Do not mention the constraints.
 
-Write only the narrative text.
+Write only the story.
 
 In {LANGUAGE} language.
 """
@@ -175,15 +180,21 @@ In {LANGUAGE} language.
 			prompt = f"""
 You are the narrator of an interactive story.
 
+NARRATIVE RULES:
+{rules}
+
+NARRATIVE TRANSITION:
 {transitionDescribed}
 
-Write a short continuation of the story based ONLY on the
-changes produced by the action.
+The continuation MUST be consistent with the transition.
 
-Do not invent changes to the narrrative state.
-Do not change character status, flags, location or tension.
+Write a short narrative continuation.
 
-Write only the narrative text.
+Do not explain these rules.
+Do not mention the narrative state.
+Do not mention the constraints.
+
+Write only the story.
 
 In {LANGUAGE} language.
 """

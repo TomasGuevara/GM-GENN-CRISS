@@ -2,10 +2,12 @@ import operator
 import networkx as nx
 from pydantic import BaseModel, Field
 from src.narrative_engine.enum.operation import Operation
+from src.narrative_engine.enum.mode import Mode
 from src.narrative_engine.model.narrativeState import NarrativeState
 from src.narrative_engine.model.condition import Condition, ConditionAnd, ConditionOr
 from src.narrative_engine.model.action import Action
 from src.narrative_engine.graph.narrativeGraph import NarrativeGraph
+from src.narrative_engine.narrative_rules.assembleNarrativeRules import AssembleNarrativeRules
 from src.narrative_engine.llm.llama import Llama
 from src.narrative_engine.llm.narrativeGenerator import NarrativeGenerator
 
@@ -15,6 +17,7 @@ llama = Llama("llama3.1:8b")
 generator = NarrativeGenerator(llama)
 
 def expand_state(
+	game_mode: Mode,
 	graph: NarrativeGraph,
 	state_id: int,
 	actions: list[Action]
@@ -23,7 +26,8 @@ def expand_state(
 
 	available_actions = get_available_action(
 		state,
-		actions
+		actions,
+		game_mode
 	)
 
 	new_state_ids = []
@@ -190,7 +194,8 @@ def apply_action(
 
 def get_available_action(
 	current_state: NarrativeState,
-	actions: list[Action]
+	actions: list[Action],
+	game_mode: Mode
 ) -> list[Action]:
 	action_list = []
 
@@ -200,12 +205,13 @@ def get_available_action(
 		except ValueError as error:
 			success = False
 
-		if success:
+		if success and action.mode == game_mode:
 			action_list.append(action)
 
 	return action_list
 
 def narrative_dfs(
+	game_mode: Mode,
 	state_id: int,
 	graph: NarrativeGraph,
 	actions: list[Action],
@@ -221,6 +227,7 @@ def narrative_dfs(
 	visited.add(state_id)
 
 	leaves = expand_state(
+		game_mode,
 		graph,
 		state_id,
 		actions
@@ -228,6 +235,7 @@ def narrative_dfs(
 
 	for leave in leaves:
 		narrative_dfs(
+			game_mode,
 			leave,
 			graph,
 			actions,
@@ -242,17 +250,32 @@ def navigate(
 	graph: NarrativeGraph,
 	actions: list[Action]
 ):
+	game_mode: Mode = None
 	current_state = state
 	user_input = ""
 	action_list: list[Action]
 	success:bool
 	story:str
+	rules:str
 	selected_action: Action
 
 	print("Welcome to GM-GENN-CRISS " + GM_GENN_CRISS_VERSION)
+	print("\nSelect mode game:")
+	for mode_games in Mode:
+			print("\n" + mode_games)
+	while game_mode == None:
+		try:
+			user_input = input("\nYour decision is ")
+			game_mode = Mode(user_input)
+		except ValueError:
+			game_mode = None
+			print("\nThe mode selected is invalid try again:")
+
 	print("\nThe story do you live next, start like this.")
+	rules = AssembleNarrativeRules.assemble(current_state)
 	story = generator.generate(
-		current_state
+		current_state,
+		rules
 	)
 	print("\n"+story)
 
@@ -260,6 +283,7 @@ def navigate(
 		initial_id = graph.add_state(current_state)
 
 		narrative_dfs(
+			game_mode,
 			initial_id,
 			graph,
 			actions,
@@ -269,7 +293,8 @@ def navigate(
 
 		action_list = get_available_action(
 			current_state,
-			actions
+			actions,
+			game_mode
 		)
 
 		for action in action_list:
@@ -286,8 +311,10 @@ def navigate(
 				current_state = apply_action(state, selected_action)
 				print("\n And the story continue like this")
 				
+				rules = AssembleNarrativeRules.assemble(current_state)
 				story = generator.generate(
     				state,
+    				rules,
 				    current_state,
     				selected_action
 				)
