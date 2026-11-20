@@ -7,14 +7,16 @@ from src.narrative_engine.model.narrativeState import NarrativeState
 from src.narrative_engine.model.condition import Condition, ConditionAnd, ConditionOr
 from src.narrative_engine.model.action import Action
 from src.narrative_engine.graph.narrativeGraph import NarrativeGraph
+from src.narrative_engine.narrative_state.narrativeHistory import NarrativeHistory
 from src.narrative_engine.narrative_rules.assembleNarrativeRules import AssembleNarrativeRules
-from src.narrative_engine.llm.llama import Llama
+from src.narrative_engine.llm.connection import Llama, Gemini
 from src.narrative_engine.llm.narrativeGenerator import NarrativeGenerator
 
 LIMIT_DEPHT = 3
-GM_GENN_CRISS_VERSION = "1.0"
-llama = Llama("llama3.1:8b")
-generator = NarrativeGenerator(llama)
+GM_GENN_CRISS_VERSION = "1.2.0"
+#llama = Llama("llama3.1:8b")
+gemini = Gemini("gemini-3.8-flash")
+generator = NarrativeGenerator(gemini)
 
 def expand_state(
 	game_mode: Mode,
@@ -246,18 +248,19 @@ def narrative_dfs(
 	visited.remove(state_id)
 
 def navigate(
-	state: NarrativeState,
+	states: list[NarrativeState],
 	graph: NarrativeGraph,
 	actions: list[Action]
 ):
 	game_mode: Mode = None
-	current_state = state
+	current_state: NarrativeState = None
 	user_input = ""
 	action_list: list[Action]
 	success:bool
 	story:str
 	rules:str
 	selected_action: Action
+	narrative_history = NarrativeHistory()
 
 	print("Welcome to GM-GENN-CRISS " + GM_GENN_CRISS_VERSION)
 	print("\nSelect mode game:")
@@ -267,6 +270,8 @@ def navigate(
 		try:
 			user_input = input("\nYour decision is ")
 			game_mode = Mode(user_input)
+			numero = list(Mode).index(game_mode)
+			current_state = states[numero]
 		except ValueError:
 			game_mode = None
 			print("\nThe mode selected is invalid try again:")
@@ -277,6 +282,7 @@ def navigate(
 		current_state,
 		rules
 	)
+	narrative_history.scenes.append(story)
 	print("\n"+story)
 
 	while user_input != "Close system":
@@ -307,17 +313,21 @@ def navigate(
 			success, selected_action = validate_get_action(action_list, user_input)
 			
 			if success:
-				state = current_state
-				current_state = apply_action(state, selected_action)
+				predecessor_state = current_state
+				current_state = apply_action(predecessor_state, selected_action)
 				print("\n And the story continue like this")
 				
 				rules = AssembleNarrativeRules.assemble(current_state)
 				story = generator.generate(
-    				state,
+    				predecessor_state,
     				rules,
 				    current_state,
-    				selected_action
+    				selected_action,
+    				narrative_history.scenes
 				)
+				narrative_history.scenes.append(story)
+				narrative_history.scenes = narrative_history.scenes[-3:]
+
 				print("\n"+story)
 
 				print("\n\nBehind Narrative")

@@ -2,6 +2,6 @@ from pydantic import BaseModel, Field
 
 class Character(BaseModel):
 	name: str
-	alive: bool = True
+	attributes: dict[str, bool | str | float] = Field(default_factory=dict)
 	pockets: dict[str, bool | str | float] = Field(default_factory=dict)
-	flags: dict[str, bool | str | float] = Field(default_factory=dict)
+	effect: dict[str, bool | str | float] = Field(default_factory=dict)
