@@ -1,4 +1,4 @@
-from src.narrative_engine.llm.llama import Llama
+from src.narrative_engine.llm.connection import Llama, Gemini
 from src.narrative_engine.model.narrativeState import NarrativeState
 from src.narrative_engine.model.action import Action
 LANGUAGE = "Spanish"
@@ -7,9 +7,9 @@ class NarrativeGenerator:
 
 	def __init__(
 		self,
-		llm: Llama
+		provider: Llama | Gemini
 	):
-		self.llm = llm
+		self.llm = provider
 
 	def describe_state(
 		self,
@@ -19,19 +19,20 @@ class NarrativeGenerator:
 		description.append("Characters:")
 
 		for character in state.characters.values():
-			status = "alive" if character.alive else "dead"
-			description.append(
-				f"- {character.name}: {status}"
-			)
-
-			for flag, value in character.flags.items():
+			for attribute, value in character.attributes.items():
 				description.append(
-					f"  - {flag}: {value}"
+					f"- {character.name} is {attribute}: {value}"
 				)
 
-		description.append(
-			f"Tension: {state.tension}"
-		)
+			for pocket, value in character.pockets.items():
+				description.append(
+					f"  - {character.name} habe {pocket}: {value}"
+				)
+
+		for mood, value in state.moods.items():
+			description.append(
+				f"The state feels {mood}: {value}"
+			)
 
 		description.append(
 			f"Location: {state.location}"
@@ -47,6 +48,18 @@ class NarrativeGenerator:
 
 		return "\n".join(description)
 
+	def describe_history(
+		self,
+		narrative_history: list[str]
+	) -> str:
+		description = []
+		sceneNumber = 1
+		for histories in narrative_history:
+			description.append(f"Scene {sceneNumber}: " + histories)
+			sceneNumber += 1
+
+		return "\n".join(description)
+
 	def describe_transition(
 		self,
 		previous_state: NarrativeState,
@@ -59,26 +72,28 @@ class NarrativeGenerator:
 
 		for character in previous_state.characters.values():
 			characterNStep = current_state.characters.get(character.name)
-			if character.alive == characterNStep.alive :
-				if characterNStep.alive:
-					status = "remained alive"
-				else:
-					status = "remained dead"
-
-			elif character.alive and not characterNStep.alive:
-				status = "changed from dead to alive"
-
-			else:
-				status = "now is dead"
-
 			description.append(
-				f"- {character.name}: {status}"
+				f"- {character.name} attributes:"
 			)
+			for attribute, value in characterNStep.attributes.items():
+				if character.attributes.get(attribute):
+					if character.attributes.get(attribute) == value :
+						status = f"{attribute} remained in {value}"
 
-			for flag, value in characterNStep.flags.items():
+					else:
+						status = f"{attribute} changed from {character.attributes.get(attribute)} to {value}"
+
+				else:
+					status = f"has a new attribute {attribute}: {value}"
+
+				description.append(
+					f"        - {status}"
+				)
+
+			for pocket, value in characterNStep.pockets.items():
 				status = ""
-				if flag in character.flags:
-					valuePStep = character.flags.get(flag)
+				if pocket in character.pockets:
+					valuePStep = character.pockets.get(pocket)
 					if value == valuePStep:
 						status = f"remained {valuePStep}"
 					else:
@@ -93,17 +108,32 @@ class NarrativeGenerator:
 					status = f"{value}"
 				
 				description.append(
-					f"  - {flag} {status}"
+					f"  - {pocket} {status}"
 				)
 
-		if previous_state.tension < current_state.tension:
-			description.append(f"Tension decreased, dropping from {previous_state.tension} to a lower value of {current_state.tension}")
+		if current_state.moods:
+			description.append("Global moods:")
 
-		elif previous_state.tension > current_state.tension:
-			description.append(f"Tension increased, rising from {previous_state.tension} to a level above {current_state.tension}")
+			for mood, value in current_state.moods.items():
+				status = ""
+				if mood in previous_state.moods:
+					valuePstep = previous_state.moods.get(mood)
+					if value == valuePstep:
+						status = f"remained {valuePstep}"
+					else:
+						if isinstance(value, float):
+							if valuePstep < value:
+								status = f"increased from {valuePstep} to {value}"
+							else:
+								status = f"decreased from {valuePstep} to {value}"
+						else:
+							status = f"changed from {valuePstep} to {value}"
+				else:
+					status = f"{value}"
 
-		elif previous_state.tension == current_state.tension:
-			description.append(f"Tension remained in {current_state.tension}")
+				description.append(
+					f"  - {mood} {status}"
+				)
 
 		if previous_state.location != current_state.location:
 			description.append(
@@ -145,7 +175,8 @@ class NarrativeGenerator:
 		current_state: NarrativeState,
 		rules: str = "",
 		previous_state: NarrativeState = None,
-		action: Action = None
+		action: Action = None,
+		narrative_history: list[str] = None
 	) -> str:
 		prompt:str
 		if previous_state is None and action is None:
@@ -172,6 +203,9 @@ Write only the story.
 In {LANGUAGE} language.
 """
 		else:
+			historyPreceded = self.describe_history(
+				narrative_history
+			)
 			transitionDescribed = self.describe_transition(
 				previous_state,
 				current_state,
@@ -179,6 +213,9 @@ In {LANGUAGE} language.
 			)
 			prompt = f"""
 You are the narrator of an interactive story.
+
+PREVIOUS NARRATIVE STORY:
+{historyPreceded}
 
 NARRATIVE RULES:
 {rules}

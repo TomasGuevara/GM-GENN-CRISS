@@ -5,6 +5,7 @@ class AssembleNarrativeRules:
     def assemble(
         state: NarrativeState
     ) -> str:
+        anyAttribute: bool
         anyObjectPocket: bool
         rules = []
 
@@ -19,24 +20,17 @@ class AssembleNarrativeRules:
 
         for character in state.characters.values():
 
-            if not character.alive:
+            if character.attributes:
                 rules.append(
-                    f"{character.name} is dead and "
-                    "must not be described as alive."
+                    f"Don´t change any value of the attributes. "
+                    f"If the attribute represents a player's state,"
+                     " it cannot be altered in the text; however,"
+                     " if there has been a change from a previous state to the current one,"
+                     " that change must be specified—though"
+                     " it cannot simply be modified to match the current state."
                 )
 
-            else:
-                rules.append(
-                    f"{character.name} is alive and "
-                    "must not be described as dead."
-                )
-
-            if character.flags:
-                rules.append(
-                    f"Don´t change any value of the flags. "
-                    f"If the name of a flag is similar to another attribute of the character {character.name}, "
-                    "the attribute is treated as the primary element and the flag as an addition."
-                )
+                anyAttribute = True
 
             if character.pockets:
                 rules.append(
@@ -50,6 +44,11 @@ class AssembleNarrativeRules:
 
                 anyObjectPocket = True
 
+        if anyAttribute:
+            rules.append(
+                f"The narrator must not create new atributtes."
+            )
+
         if anyObjectPocket:
             rules.append(
                 f"The narrator must not create new items."
@@ -59,9 +58,19 @@ class AssembleNarrativeRules:
             f"The current location is {state.location}."
         )
 
-        rules.append(
-            f"The current tension is {state.tension}."
-        )
+        for mood, value in state.moods.items():
+            rules.append(
+                f"Exist a mood that represent {mood}"
+            )
+
+        if state.moods:
+            rules.append(
+                f"The mood is an important element of the story,"
+                " as it dictates how the narrative should be told."
+                " It must remain consistent throughout the writing process"
+                " and should not be explicitly stated or described within the text itself;"
+                " rather, it is a factor that the writer must keep in mind without making it overt in the writing."
+            )
 
         for flag, value in state.flags.items():
             rules.append(
