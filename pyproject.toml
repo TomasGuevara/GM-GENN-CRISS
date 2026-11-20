@@ -5,9 +5,11 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "google-genai>=3.3.0",
     "networkx>=3.6.1",
     "ollama>=0.6.2",
     "pydantic>=2.13.4",
+    "python-dotenv>=1.2.4",
     "requests>=2.34.2",
 ]
 

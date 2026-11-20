@@ -18,6 +18,9 @@ from src.narrative_engine.narrative_state.representNarrativeState import navigat
 
 saul = Character(
     name="saul",
+    attributes={
+        "alive": True,
+    },
     pockets={
         "money": 50,
         "cigarettes": True
@@ -26,6 +29,9 @@ saul = Character(
 
 amanda = Character(
     name="amanda",
+    attributes={
+        "alive": True,
+    },
     pockets={
         "money": 75,
         "vacuum bottle": True,
@@ -35,6 +41,9 @@ amanda = Character(
 
 bruce = Character(
     name="bruce",
+    attributes={
+        "alive": True,
+    },
     pockets={
         "money": 10,
         "guitar": True
@@ -43,10 +52,27 @@ bruce = Character(
 
 player = Character(
     name="player",
+    attributes={
+        "alive": True,
+    },
     pockets={
         "money": 20,
         "book": True
     }
+)
+
+state2 = NarrativeState(
+    characters={
+        "saul": saul,
+        "amanda": amanda,
+        "bruce": bruce,
+        "player": player
+    },
+    moods={
+        "happiness": 60,
+        "calm": 60
+    },
+    location="Junín"
 )
 
 state = NarrativeState(
@@ -56,8 +82,9 @@ state = NarrativeState(
         "bruce": bruce,
         "player": player
     },
-    happiness=60,
-    calm=60,
+    moods={
+        "tension": 20
+    },
     location="Junín"
 )
 
@@ -71,20 +98,20 @@ kill_saul = Action(
     mode= Mode.TERROR,
 
     preconditions=Condition(
-        path="characters.saul.alive",
+        path="characters.saul.attributes.alive",
         operator=Comparison.EQUAL,
         value=True
     ),
 
     effects=[
         Effect(
-            path="characters.saul.alive",
+            path="characters.saul.attributes.alive",
             operation= Operation.SET,
             value=False
         ),
 
         Effect(
-            path="tension",
+            path="moods.tension",
             operation=Operation.INCREMENT,
             value=20
         )
@@ -96,20 +123,20 @@ kill_bruce = Action(
     mode= Mode.TERROR,
 
     preconditions=Condition(
-        path="characters.bruce.alive",
+        path="characters.bruce.attributes.alive",
         operator=Comparison.EQUAL,
         value=True
     ),
 
     effects=[
         Effect(
-            path="characters.bruce.alive",
+            path="characters.bruce.attributes.alive",
             operation= Operation.SET,
             value=False
         ),
 
         Effect(
-            path="tension",
+            path="moods.tension",
             operation=Operation.INCREMENT,
             value=20
         )
@@ -123,13 +150,13 @@ raise_tension = Action(
     preconditions=ConditionOr(
         conditions=[
             Condition(
-                path="characters.saul.alive",
+                path="characters.saul.attributes.alive",
                 operator=Comparison.EQUAL,
                 value=False
             ),
 
             Condition(
-                path="characters.bruce.alive",
+                path="characters.bruce.attributes.alive",
                 operator=Comparison.EQUAL,
                 value=False
             )
@@ -138,7 +165,7 @@ raise_tension = Action(
 
     effects=[
         Effect(
-            path="tension",
+            path="moods.tension",
             operation=Operation.INCREMENT,
             value=10
         )
@@ -152,19 +179,19 @@ run_away_amanda = Action(
     preconditions=ConditionAnd(
         conditions=[
             Condition(
-                path="characters.saul.alive",
+                path="characters.saul.attributes.alive",
                 operator=Comparison.EQUAL,
                 value=False
             ),
 
             Condition(
-                path="characters.bruce.alive",
+                path="characters.bruce.attributes.alive",
                 operator=Comparison.EQUAL,
                 value=False
             ),
 
             Condition(
-                path="characters.amanda.flags.escaped",
+                path="characters.amanda.effect.escaped",
                 operator=Comparison.EQUAL,
                 value=False
             )
@@ -173,13 +200,13 @@ run_away_amanda = Action(
 
     effects=[
         Effect(
-            path="tension",
+            path="moods.tension",
             operation=Operation.DECREMENT,
             value=30
         ),
 
         Effect(
-            path="characters.amanda.flags.escaped",
+            path="characters.amanda.effect.escaped",
             operation=Operation.SET,
             value=True
         ),
@@ -197,14 +224,14 @@ cry_for = Action(
     mode= Mode.TERROR,
 
     preconditions=Condition(
-        path="tension",
+        path="moods.tension",
         operator=Comparison.GREATER_EQUAL,
         value=50
     ),
 
     effects=[
         Effect(
-            path="tension",
+            path="moods.tension",
             operation=Operation.DECREMENT,
             value=10
         )
@@ -223,7 +250,7 @@ play_guitar = Action(
 
     effects=[
         Effect(
-            path="happiness",
+            path="moods.happiness",
             operation=Operation.INCREMENT,
             value=10
         )
@@ -251,7 +278,7 @@ drink_mate = Action(
 
     effects=[
         Effect(
-            path="calm",
+            path="moods.calm",
             operation=Operation.INCREMENT,
             value=5
         )
@@ -270,7 +297,7 @@ smoke_cigarette = Action(
 
     effects=[
         Effect(
-            path="calm",
+            path="moods.calm",
             operation=Operation.INCREMENT,
             value=5
         ),
@@ -314,7 +341,7 @@ graph = NarrativeGraph()
 initial_id = graph.add_state(state)
 
 navigate(
-    state,
+    [state, state2],
     graph,
     [kill_saul, kill_bruce, raise_tension, cry_for, run_away_amanda,
     play_guitar, drink_mate, smoke_cigarette, buy_cigarette]
